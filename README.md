@@ -1,5 +1,2 @@
-# Firebase Studio
-
-This is a NextJS starter in Firebase Studio.
-
-To get started, take a look at src/app/page.tsx.
+# electronics-retail-dbms
+A full-stack application simulating a real-world electronics retail management dashboard. It connects a React/Next.js frontend to a MySQL database, handling inventory, sales, suppliers, and customer data with complex relational logic.
