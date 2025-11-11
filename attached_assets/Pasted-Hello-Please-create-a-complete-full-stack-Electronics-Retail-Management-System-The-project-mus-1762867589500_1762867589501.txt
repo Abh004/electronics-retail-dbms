@@ -1,0 +1,191 @@
+Hello! Please create a complete, full-stack Electronics Retail Management System.
+
+The project must be split into two main parts:
+
+A Backend REST API using Node.js and Express, which will connect to a MySQL database.
+
+A Frontend GUI using React and Tailwind CSS.
+
+The entire application should be based on the MySQL database schema, functions, and triggers provided below.
+
+Part 1: Backend API (Node.js & Express) Please create a Node.js/Express server that connects to the MySQL database (using the mysql2/promise library). This server must expose the following REST API endpoints:
+
+Product Management (CRUD for Product, Brand, Supplier)
+GET /api/products: Get all products (with brand name joined).
+
+POST /api/products: Create a new product.
+
+GET /api/brands: Get all brands.
+
+GET /api/suppliers: Get all suppliers.
+
+(...and so on for PUT/DELETE)
+
+Customer Management (CRUD for Customer)
+GET /api/customers: Get all customers.
+
+POST /api/customers: Create a new customer.
+
+Employee Management (CRUD for Employee)
+GET /api/employees: Get all employees.
+
+POST /api/employees: Create a new employee.
+
+Order Processing (The Core Logic)
+GET /api/orders: Get all orders (with customer details).
+
+GET /api/orders/:id: Get details for a single order (including its Order_Details and Payment records).
+
+POST /api/orders: (This is the most important endpoint) Create a new order. This endpoint's logic must:
+
+Receive a customerId and an array of cartItems (e.g., [{ productId: 1, quantity: 2 }, ...]).
+
+Start a MySQL Transaction.
+
+Create a new record in the Orders table (for the customerId).
+
+Loop through each cartItem:
+
+Fetch the product's current Price from the Product table.
+
+Insert a record into Order_Details (with Order_Id, Product_Id, Quantity, and the fetched PricePerUnit).
+
+Important: The trg_orderdetails_before_insert (stock check) and trg_orderdetails_after_insert (total calculation) in the database will handle the stock and total amount updates automatically.
+
+Commit the transaction if everything succeeds.
+
+Rollback the transaction if any error occurs (e.g., the stock trigger returns an error).
+
+Return the new Order_Id to the frontend.
+
+Payment Processing
+POST /api/orders/:id/payments: Add a new payment to an order. The trg_payment_before_insert trigger will automatically check if the payment exceeds the balance.
+
+Dashboard/Function Calls
+GET /api/functions/customer-spent/:id: An endpoint that calls the get_customer_total_spent() SQL function.
+
+GET /api/functions/order-balance/:id: An endpoint that calls the get_order_balance() SQL function.
+
+Part 2: Frontend GUI (React) Please create a modern React application (using Vite) with react-router-dom for pages and axios for API calls. The app should be styled with Tailwind CSS.
+
+Pages Required:
+
+Dashboard:
+
+Show summary cards (e.g., "Total Customers," "Total Products") by calling the API.
+
+Have a "Check Customer Spending" tool that uses the /api/functions/customer-spent/:id endpoint.
+
+Products Page:
+
+Display all products from GET /api/products in a table.
+
+An "Add Product" form that uses POST /api/products. This form must have dropdowns that are populated from GET /api/brands and GET /api/suppliers.
+
+Customers Page:
+
+Full CRUD for customers using the /api/customers endpoints.
+
+Employees Page:
+
+Full CRUD for employees.
+
+Point of Sale (POS) / New Order Page:
+
+A searchable dropdown to select a customer (from GET /api/customers).
+
+A searchable list of products (from GET /api/products) to add to a cart.
+
+Display the cart and a "Total" price.
+
+A "Create Order" button that sends the customerId and cartItems array to the POST /api/orders endpoint.
+
+If the order is successful, it should automatically redirect to the payment page for that new order.
+
+Order Details Page:
+
+A page that shows all details for a single order (using GET /api/orders/:id).
+
+Show the order items, total amount, and remaining balance (using GET /api/functions/order-balance/:id).
+
+Include an "Add Payment" form that submits to POST /api/orders/:id/payments.
+
+Database Schema (Source of Truth) CREATE TABLE Brand ( Brand_Id INT PRIMARY KEY AUTO_INCREMENT, Name VARCHAR(100) NOT NULL UNIQUE, Discounts FLOAT DEFAULT 0.0 );
+
+CREATE TABLE Supplier ( Supplier_Id INT PRIMARY KEY AUTO_INCREMENT, Name VARCHAR(100) NOT NULL, Contact_Email VARCHAR(100) UNIQUE, Contact_Phone VARCHAR(20) );
+
+CREATE TABLE Product ( Product_Id INT PRIMARY KEY AUTO_INCREMENT, Name VARCHAR(255) NOT NULL, Price DECIMAL(10, 2) NOT NULL, Stock INT NOT NULL, Brand_Id INT, FOREIGN KEY (Brand_Id) REFERENCES Brand(Brand_Id) );
+
+CREATE TABLE Product_Supplier ( Product_Id INT, Supplier_Id INT, PRIMARY KEY (Product_Id, Supplier_Id), FOREIGN KEY (Product_Id) REFERENCES Product(Product_Id), FOREIGN KEY (Supplier_Id) REFERENCES Supplier(Supplier_Id) );
+
+CREATE TABLE Customer ( Customer_Id INT PRIMARY KEY AUTO_INCREMENT, First_Name VARCHAR(50) NOT NULL, Middle_Name VARCHAR(50), Last_Name VARCHAR(50) NOT NULL, Email VARCHAR(100) NOT NULL UNIQUE, Phone VARCHAR(20), Address VARCHAR(255) );
+
+CREATE TABLE Employee ( Employee_Id INT PRIMARY KEY AUTO_INCREMENT, FirstName VARCHAR(50) NOT NULL, LastName VARCHAR(50) NOT NULL, Designation VARCHAR(100), HireDate DATE );
+
+CREATE TABLE Orders ( Order_Id INT PRIMARY KEY AUTO_INCREMENT, OrderDate DATETIME NOT NULL, TotalAmount DECIMAL(10, 2) NOT NULL DEFAULT 0.00, Customer_Id INT, FOREIGN KEY (Customer_Id) REFERENCES Customer(Customer_Id) );
+
+CREATE TABLE Order_Details ( OrderDetail_Id INT PRIMARY KEY AUTO_INCREMENT, Order_Id INT, Product_Id INT, Quantity INT NOT NULL, PricePerUnit DECIMAL(10, 2) NOT NULL, FOREIGN KEY (Order_Id) REFERENCES Orders(Order_Id), FOREIGN KEY (Product_Id) REFERENCES Product(Product_Id) );
+
+CREATE TABLE Payment ( Transaction_Id INT PRIMARY KEY AUTO_INCREMENT, Order_Id INT, Amount DECIMAL(10, 2) NOT NULL, PaymentMode VARCHAR(50), Status VARCHAR(50), PaymentTimestamp DATETIME NOT NULL, FOREIGN KEY (Order_Id) REFERENCES Orders(Order_Id) );
+
+DELIMITER $$
+
+-- Calculates the total value of all items within a single order. CREATE FUNCTION calculate_order_total(p_order_id INT) RETURNS DECIMAL(12,2) DETERMINISTIC READS SQL DATA BEGIN DECLARE v_total DECIMAL(12,2); SELECT IFNULL(SUM(quantity * price_per_unit), 0.00) INTO v_total FROM Order_Details WHERE order_id = p_order_id; RETURN v_total; END $$
+
+-- Calculates the sum of all payments made for a single order. CREATE FUNCTION get_total_payments(p_order_id INT) RETURNS DECIMAL(12,2) DETERMINISTIC READS SQL DATA BEGIN DECLARE v_paid DECIMAL(12,2); SELECT IFNULL(SUM(amount), 0.00) INTO v_paid FROM Payment WHERE order_id = p_order_id; RETURN v_paid; END $$
+
+-- Calculates the outstanding balance for an order. CREATE FUNCTION get_order_balance(p_order_id INT) RETURNS DECIMAL(12,2) DETERMINISTIC READS SQL DATA BEGIN DECLARE v_total DECIMAL(12,2); DECLARE v_paid DECIMAL(12,2); DECLARE v_balance DECIMAL(12,2);
+
+SELECT total_amount INTO v_total
+FROM Orders
+WHERE order_id = p_order_id;
+
+SET v_paid = get_total_payments(p_order_id);
+SET v_balance = v_total - v_paid;
+
+RETURN v_balance;
+
+END $$
+
+-- Gets the total amount a specific customer has spent across all their orders. CREATE FUNCTION get_customer_total_spent(p_customer_id INT) RETURNS DECIMAL(12,2) DETERMINISTIC READS SQL DATA BEGIN DECLARE v_total_spent DECIMAL(12,2); SELECT IFNULL(SUM(total_amount), 0.00) INTO v_total_spent FROM Orders WHERE customer_id = p_customer_id; RETURN v_total_spent; END $$
+
+-- Gets the current stock level for a specific product. CREATE FUNCTION get_remaining_stock(p_product_id INT) RETURNS INT DETERMINISTIC READS SQL DATA BEGIN DECLARE v_stock INT; SELECT stock INTO v_stock FROM Product WHERE product_id = p_product_id; RETURN IFNULL(v_stock, 0); END $$
+
+DELIMITER ;
+
+DELIMITER $$
+
+-- Before adding a product to an order, check if there is enough stock. CREATE TRIGGER trg_orderdetails_before_insert BEFORE INSERT ON Order_Details FOR EACH ROW BEGIN DECLARE v_stock INT; -- Lock the product row to prevent race conditions SELECT stock INTO v_stock FROM Product WHERE product_id = NEW.product_id FOR UPDATE;
+
+IF v_stock IS NULL THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Product does not exist.';
+ELSEIF v_stock < NEW.quantity THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Insufficient stock.';
+END IF;
+
+-- Decrease the stock level
+UPDATE Product
+   SET stock = stock - NEW.quantity
+ WHERE product_id = NEW.product_id;
+
+END $$
+
+-- After removing a product from an order, return its quantity to the stock. CREATE TRIGGER trg_orderdetails_before_delete BEFORE DELETE ON Order_Details FOR EACH ROW BEGIN UPDATE Product SET stock = stock + OLD.quantity WHERE product_id = OLD.product_id; END $$
+
+-- After adding a product to an order, update the order's total amount. CREATE TRIGGER trg_orderdetails_after_insert AFTER INSERT ON Order_Details FOR EACH ROW BEGIN UPDATE Orders SET total_amount = calculate_order_total(NEW.order_id) WHERE order_id = NEW.order_id; END $$
+
+-- After updating an item in an order (e.g., changing quantity), update the total. CREATE TRIGGER trg_orderdetails_after_update AFTER UPDATE ON Order_Details FOR EACH ROW BEGIN UPDATE Orders SET total_amount = calculate_order_total(NEW.order_id) WHERE order_id = NEW.order_id; END $$
+
+-- After deleting an item from an order, update the total. CREATE TRIGGER trg_orderdetails_after_delete AFTER DELETE ON Order_Details FOR EACH ROW BEGIN UPDATE Orders SET total_amount = calculate_order_total(OLD.order_id) WHERE order_id = OLD.order_id; END $$
+
+-- Before inserting a payment, check that it doesn't exceed the order balance. CREATE TRIGGER trg_payment_before_insert BEFORE INSERT ON Payment FOR EACH ROW BEGIN DECLARE v_balance DECIMAL(12,2); SET v_balance = get_order_balance(NEW.order_id);
+
+IF NEW.amount > v_balance THEN
+    SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Payment exceeds remaining balance.';
+END IF;
+
+END $$
+
+-- Before creating an order, set the order date to now() if it's not provided. CREATE TRIGGER trg_orders_before_insert BEFORE INSERT ON Orders FOR EACH ROW BEGIN IF NEW.order_date IS NULL THEN SET NEW.order_date = NOW(); END IF; END $$
+
+DELIMITER ;
