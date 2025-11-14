@@ -159,7 +159,9 @@ export const insertCustomerSchema = createInsertSchema(customers).omit({
   customerId: true,
 });
 
-export const insertEmployeeSchema = createInsertSchema(employees).omit({
+export const insertEmployeeSchema = createInsertSchema(employees, {
+  hireDate: z.coerce.date().optional().nullable(),
+}).omit({
   employeeId: true,
 });
 
